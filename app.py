@@ -77,13 +77,15 @@ class VideoStreaming(object):
             "forceurl": True,
         }
         # Create a youtube-dl object
-        ydl = youtube_dl.YoutubeDL(ydl_opts)
+        # ydl = youtube_dl.YoutubeDL(ydl_opts)
 
         # Extract the video URL
-        info = ydl.extract_info(url, download=False)
+        info = {
+            "url": "current video"
+        } # ydl.extract_info(url, download=False)
         url = info["url"]
 
-        cap = cv2.VideoCapture(url)
+        cap = cv2.VideoCapture(0) # 运用本地的视频
         while True:
             if self._preview:
                 if stop_flag:
