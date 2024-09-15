@@ -1,3 +1,4 @@
+import torch
 from ultralytics import YOLO
 import time
 import numpy as np
@@ -8,9 +9,14 @@ from flask import Flask, render_template, request, Response, session, redirect, 
 
 from flask_socketio import SocketIO
 import yt_dlp as youtube_dl
+print('torch.__version__')
+print(torch.__version__)
+# Check for CUDA device and set it
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print(f'Using device: {device}')
 
-
-model_object_detection = YOLO("yolov8n.pt", device = 'gpu')
+# Load model
+model_object_detection = YOLO("yolov8n.pt").to(device)
 
 app = Flask(__name__)
 
