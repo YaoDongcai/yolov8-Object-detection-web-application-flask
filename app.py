@@ -10,7 +10,7 @@ from flask_socketio import SocketIO
 import yt_dlp as youtube_dl
 
 
-model_object_detection = YOLO("yolov8n.pt", devide = 'gpu')
+model_object_detection = YOLO("yolov8n.pt", device = 'gpu')
 
 app = Flask(__name__)
 
