@@ -16,7 +16,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'Using device: {device}')
 
 # Load model
-model_object_detection = YOLO("yolov8n.pt").to(device)
+model_object_detection = YOLO("yolov8n.pt") #.to(device)
 
 app = Flask(__name__)
 
