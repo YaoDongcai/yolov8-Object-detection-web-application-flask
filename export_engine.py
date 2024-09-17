@@ -4,11 +4,11 @@ from ultralytics import YOLO
 model = YOLO("yolov8n.pt")
 
 # Export the model
-model.export(format="engine")  # creates 'yolov8n.engine'
+# model.export(format="engine")  # creates 'yolov8n.engine'
 
 # Load the exported TensorRT model
-trt_model = YOLO("yolov8n.engine")
+# trt_model = YOLO("yolov8n.engine")
 
 # Run inference
-results = trt_model("https://ultralytics.com/images/bus.jpg")
+results = model("https://ultralytics.com/images/bus.jpg")
 
