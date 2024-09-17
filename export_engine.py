@@ -10,5 +10,6 @@ model = YOLO("yolov8n.pt")
 # trt_model = YOLO("yolov8n.engine")
 
 # Run inference
-results = model("https://ultralytics.com/images/bus.jpg")
+# results = model("https://ultralytics.com/images/bus.jpg")
+results = model("test.jpg")
 
