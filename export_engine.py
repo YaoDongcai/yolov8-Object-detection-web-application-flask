@@ -13,6 +13,6 @@ model_object_detection = YOLO("yolov8n.pt")
 # results = model("https://ultralytics.com/images/bus.jpg")
 results = model_object_detection.predict('test.jpg', conf=75/100)
 print(results)
-frame, labels = results[0].plot()
+_, labels = results[0].plot()
 print(labels)
 
