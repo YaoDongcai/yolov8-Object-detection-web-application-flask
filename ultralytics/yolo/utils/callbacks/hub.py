@@ -1,15 +1,14 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# Ultralytics YOLO 🚀, GPL-3.0 license
 
 import json
 from time import time
 
-from ultralytics.hub.utils import PREFIX, events
+from ultralytics.hub.utils import PREFIX, traces
 from ultralytics.yolo.utils import LOGGER
 from ultralytics.yolo.utils.torch_utils import get_flops, get_num_params
 
 
 def on_pretrain_routine_end(trainer):
-    """Logs info before starting timer for upload rate limit."""
     session = getattr(trainer, 'hub_session', None)
     if session:
         # Start timer for upload rate limit
@@ -18,7 +17,6 @@ def on_pretrain_routine_end(trainer):
 
 
 def on_fit_epoch_end(trainer):
-    """Uploads training progress metrics at the end of each epoch."""
     session = getattr(trainer, 'hub_session', None)
     if session:
         # Upload metrics after val end
@@ -37,19 +35,17 @@ def on_fit_epoch_end(trainer):
 
 
 def on_model_save(trainer):
-    """Saves checkpoints to Ultralytics HUB with rate limiting."""
     session = getattr(trainer, 'hub_session', None)
     if session:
         # Upload checkpoints with rate limiting
         is_best = trainer.best_fitness == trainer.fitness
         if time() - session.timers['ckpt'] > session.rate_limits['ckpt']:
-            LOGGER.info(f'{PREFIX}Uploading checkpoint https://hub.ultralytics.com/models/{session.model_id}')
+            LOGGER.info(f'{PREFIX}Uploading checkpoint {session.model_id}')
             session.upload_model(trainer.epoch, trainer.last, is_best)
             session.timers['ckpt'] = time()  # reset timer
 
 
 def on_train_end(trainer):
-    """Upload final model and metrics to Ultralytics HUB at the end of training."""
     session = getattr(trainer, 'hub_session', None)
     if session:
         # Upload final model and metrics with exponential standoff
@@ -61,23 +57,19 @@ def on_train_end(trainer):
 
 
 def on_train_start(trainer):
-    """Run events on train start."""
-    events(trainer.args)
+    traces(trainer.args, traces_sample_rate=1.0)
 
 
 def on_val_start(validator):
-    """Runs events on validation start."""
-    events(validator.args)
+    traces(validator.args, traces_sample_rate=1.0)
 
 
 def on_predict_start(predictor):
-    """Run events on predict start."""
-    events(predictor.args)
+    traces(predictor.args, traces_sample_rate=1.0)
 
 
 def on_export_start(exporter):
-    """Run events on export start."""
-    events(exporter.args)
+    traces(exporter.args, traces_sample_rate=1.0)
 
 
 callbacks = {

@@ -1,4 +1,4 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# Ultralytics YOLO 🚀, GPL-3.0 license
 import contextlib
 import re
 import shutil
@@ -9,8 +9,8 @@ from types import SimpleNamespace
 from typing import Dict, List, Union
 
 from ultralytics.yolo.utils import (DEFAULT_CFG, DEFAULT_CFG_DICT, DEFAULT_CFG_PATH, LOGGER, ROOT, USER_CONFIG_DIR,
-                                    IterableSimpleNamespace, __version__, checks, colorstr, deprecation_warn,
-                                    get_settings, yaml_load, yaml_print)
+                                    IterableSimpleNamespace, __version__, checks, colorstr, get_settings, yaml_load,
+                                    yaml_print)
 
 # Define valid tasks and modes
 MODES = 'train', 'val', 'predict', 'export', 'track', 'benchmark'
@@ -18,13 +18,13 @@ TASKS = 'detect', 'segment', 'classify', 'pose'
 TASK2DATA = {
     'detect': 'coco128.yaml',
     'segment': 'coco128-seg.yaml',
-    'classify': 'imagenet100',
-    'pose': 'coco8-pose.yaml'}
+    'pose': 'coco128-pose.yaml',
+    'classify': 'imagenet100'}
 TASK2MODEL = {
     'detect': 'yolov8n.pt',
     'segment': 'yolov8n-seg.pt',
-    'classify': 'yolov8n-cls.pt',
-    'pose': 'yolov8n-pose.pt'}
+    'pose': 'yolov8n-pose.yaml',
+    'classify': 'yolov8n-cls.pt'}  # temp
 
 CLI_HELP_MSG = \
     f"""
@@ -63,16 +63,16 @@ CLI_HELP_MSG = \
     """
 
 # Define keys for arg type checks
-CFG_FLOAT_KEYS = 'warmup_epochs', 'box', 'cls', 'dfl', 'degrees', 'shear'
+CFG_FLOAT_KEYS = 'warmup_epochs', 'box', 'cls', 'dfl', 'degrees', 'shear', 'fl_gamma'
 CFG_FRACTION_KEYS = ('dropout', 'iou', 'lr0', 'lrf', 'momentum', 'weight_decay', 'warmup_momentum', 'warmup_bias_lr',
                      'label_smoothing', 'hsv_h', 'hsv_s', 'hsv_v', 'translate', 'scale', 'perspective', 'flipud',
                      'fliplr', 'mosaic', 'mixup', 'copy_paste', 'conf', 'iou')  # fractional floats limited to 0.0 - 1.0
 CFG_INT_KEYS = ('epochs', 'patience', 'batch', 'workers', 'seed', 'close_mosaic', 'mask_ratio', 'max_det', 'vid_stride',
-                'line_width', 'workspace', 'nbs', 'save_period')
-CFG_BOOL_KEYS = ('save', 'exist_ok', 'verbose', 'deterministic', 'single_cls', 'rect', 'cos_lr', 'overlap_mask', 'val',
-                 'save_json', 'save_hybrid', 'half', 'dnn', 'plots', 'show', 'save_txt', 'save_conf', 'save_crop',
-                 'show_labels', 'show_conf', 'visualize', 'augment', 'agnostic_nms', 'retina_masks', 'boxes', 'keras',
-                 'optimize', 'int8', 'dynamic', 'simplify', 'nms', 'v5loader')
+                'line_thickness', 'workspace', 'nbs', 'save_period')
+CFG_BOOL_KEYS = ('save', 'exist_ok', 'verbose', 'deterministic', 'single_cls', 'image_weights', 'rect', 'cos_lr',
+                 'overlap_mask', 'val', 'save_json', 'save_hybrid', 'half', 'dnn', 'plots', 'show', 'save_txt',
+                 'save_conf', 'save_crop', 'hide_labels', 'hide_conf', 'visualize', 'augment', 'agnostic_nms',
+                 'retina_masks', 'boxes', 'keras', 'optimize', 'int8', 'dynamic', 'simplify', 'nms', 'v5loader')
 
 
 def cfg2dict(cfg):
@@ -111,13 +111,10 @@ def get_cfg(cfg: Union[str, Path, Dict, SimpleNamespace] = DEFAULT_CFG_DICT, ove
         check_cfg_mismatch(cfg, overrides)
         cfg = {**cfg, **overrides}  # merge cfg and overrides dicts (prefer overrides)
 
-    # Special handling for numeric project/name
+    # Special handling for numeric project/names
     for k in 'project', 'name':
         if k in cfg and isinstance(cfg[k], (int, float)):
             cfg[k] = str(cfg[k])
-    if cfg.get('name') == 'model':  # assign model to 'name' arg
-        cfg['name'] = cfg.get('model', '').split('.')[0]
-        LOGGER.warning(f"WARNING ⚠️ 'name=model' automatically updated to 'name={cfg['name']}'.")
 
     # Type and Value checks
     for k, v in cfg.items():
@@ -143,25 +140,6 @@ def get_cfg(cfg: Union[str, Path, Dict, SimpleNamespace] = DEFAULT_CFG_DICT, ove
     return IterableSimpleNamespace(**cfg)
 
 
-def _handle_deprecation(custom):
-    """
-    Hardcoded function to handle deprecated config keys
-    """
-
-    for key in custom.copy().keys():
-        if key == 'hide_labels':
-            deprecation_warn(key, 'show_labels')
-            custom['show_labels'] = custom.pop('hide_labels') == 'False'
-        if key == 'hide_conf':
-            deprecation_warn(key, 'show_conf')
-            custom['show_conf'] = custom.pop('hide_conf') == 'False'
-        if key == 'line_thickness':
-            deprecation_warn(key, 'line_width')
-            custom['line_width'] = custom.pop('line_thickness')
-
-    return custom
-
-
 def check_cfg_mismatch(base: Dict, custom: Dict, e=None):
     """
     This function checks for any mismatched keys between a custom configuration list and a base configuration list.
@@ -171,7 +149,6 @@ def check_cfg_mismatch(base: Dict, custom: Dict, e=None):
         - custom (Dict): a dictionary of custom configuration options
         - base (Dict): a dictionary of base configuration options
     """
-    custom = _handle_deprecation(custom)
     base, custom = (set(x.keys()) for x in (base, custom))
     mismatched = [x for x in custom if x not in base]
     if mismatched:
@@ -399,7 +376,6 @@ def entrypoint(debug=''):
 
 # Special modes --------------------------------------------------------------------------------------------------------
 def copy_default_cfg():
-    """Copy and create a new default configuration file with '_copy' appended to its name."""
     new_file = Path.cwd() / DEFAULT_CFG_PATH.name.replace('.yaml', '_copy.yaml')
     shutil.copy2(DEFAULT_CFG_PATH, new_file)
     LOGGER.info(f'{DEFAULT_CFG_PATH} copied to {new_file}\n'
@@ -407,5 +383,5 @@ def copy_default_cfg():
 
 
 if __name__ == '__main__':
-    # Example Usage: entrypoint(debug='yolo predict model=yolov8n.pt')
+    # entrypoint(debug='yolo predict model=yolov8n.pt')
     entrypoint(debug='')

@@ -1,4 +1,4 @@
-# Ultralytics YOLO 🚀, AGPL-3.0 license
+# Ultralytics YOLO 🚀, GPL-3.0 license
 
 from itertools import repeat
 from multiprocessing.pool import ThreadPool
@@ -17,26 +17,54 @@ from .utils import HELP_URL, LOGGER, get_hash, img2label_paths, verify_image_lab
 
 
 class YOLODataset(BaseDataset):
-    """
-    Dataset class for loading object detection and/or segmentation labels in YOLO format.
-
-    Args:
-        data (dict, optional): A dataset YAML dictionary. Defaults to None.
-        use_segments (bool, optional): If True, segmentation masks are used as labels. Defaults to False.
-        use_keypoints (bool, optional): If True, keypoints are used as labels. Defaults to False.
-
-    Returns:
-        (torch.utils.data.Dataset): A PyTorch dataset object that can be used for training an object detection model.
-    """
     cache_version = '1.0.2'  # dataset labels *.cache version, >= 1.0.0 for YOLOv8
     rand_interp_methods = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_AREA, cv2.INTER_LANCZOS4]
+    """
+    Dataset class for loading images object detection and/or segmentation labels in YOLO format.
 
-    def __init__(self, *args, data=None, use_segments=False, use_keypoints=False, **kwargs):
+    Args:
+        img_path (str): path to the folder containing images.
+        imgsz (int): image size (default: 640).
+        cache (bool): if True, a cache file of the labels is created to speed up future creation of dataset instances
+        (default: False).
+        augment (bool): if True, data augmentation is applied (default: True).
+        hyp (dict): hyperparameters to apply data augmentation (default: None).
+        prefix (str): prefix to print in log messages (default: '').
+        rect (bool): if True, rectangular training is used (default: False).
+        batch_size (int): size of batches (default: None).
+        stride (int): stride (default: 32).
+        pad (float): padding (default: 0.0).
+        single_cls (bool): if True, single class training is used (default: False).
+        use_segments (bool): if True, segmentation masks are used as labels (default: False).
+        use_keypoints (bool): if True, keypoints are used as labels (default: False).
+        names (list): class names (default: None).
+
+    Returns:
+        A PyTorch dataset object that can be used for training an object detection or segmentation model.
+    """
+
+    def __init__(self,
+                 img_path,
+                 imgsz=640,
+                 cache=False,
+                 augment=True,
+                 hyp=None,
+                 prefix='',
+                 rect=False,
+                 batch_size=None,
+                 stride=32,
+                 pad=0.0,
+                 single_cls=False,
+                 use_segments=False,
+                 use_keypoints=False,
+                 names=None,
+                 classes=None):
         self.use_segments = use_segments
         self.use_keypoints = use_keypoints
-        self.data = data
+        self.names = names
         assert not (self.use_segments and self.use_keypoints), 'Can not use both segments and keypoints.'
-        super().__init__(*args, **kwargs)
+        super().__init__(img_path, imgsz, cache, augment, hyp, prefix, rect, batch_size, stride, pad, single_cls,
+                         classes)
 
     def cache_labels(self, path=Path('./labels.cache')):
         """Cache dataset labels, check images and read shapes.
@@ -49,15 +77,10 @@ class YOLODataset(BaseDataset):
         nm, nf, ne, nc, msgs = 0, 0, 0, 0, []  # number missing, found, empty, corrupt, messages
         desc = f'{self.prefix}Scanning {path.parent / path.stem}...'
         total = len(self.im_files)
-        nkpt, ndim = self.data.get('kpt_shape', (0, 0))
-        if self.use_keypoints and (nkpt <= 0 or ndim not in (2, 3)):
-            raise ValueError("'kpt_shape' in data.yaml missing or incorrect. Should be a list with [number of "
-                             "keypoints, number of dims (2 for x,y or 3 for x,y,visible)], i.e. 'kpt_shape: [17, 3]'")
         with ThreadPool(NUM_THREADS) as pool:
             results = pool.imap(func=verify_image_label,
                                 iterable=zip(self.im_files, self.label_files, repeat(self.prefix),
-                                             repeat(self.use_keypoints), repeat(len(self.data['names'])), repeat(nkpt),
-                                             repeat(ndim)))
+                                             repeat(self.use_keypoints), repeat(len(self.names))))
             pbar = tqdm(results, desc=desc, total=total, bar_format=TQDM_BAR_FORMAT)
             for im_file, lb, shape, segments, keypoint, nm_f, nf_f, ne_f, nc_f, msg in pbar:
                 nm += nm_f
@@ -99,7 +122,6 @@ class YOLODataset(BaseDataset):
         return x
 
     def get_labels(self):
-        """Returns dictionary of labels for YOLO training."""
         self.label_files = img2label_paths(self.im_files)
         cache_path = Path(self.label_files[0]).parent.with_suffix('.cache')
         try:
@@ -129,7 +151,6 @@ class YOLODataset(BaseDataset):
 
         # Check if the dataset is all boxes or all segments
         lengths = ((len(lb['cls']), len(lb['bboxes']), len(lb['segments'])) for lb in labels)
-        print("121312131", lengths)
         len_cls, len_boxes, len_segments = (sum(x) for x in zip(*lengths))
         if len_segments and len_boxes != len_segments:
             LOGGER.warning(
@@ -144,7 +165,6 @@ class YOLODataset(BaseDataset):
 
     # TODO: use hyp config to set all these augmentations
     def build_transforms(self, hyp=None):
-        """Builds and appends transforms to the list."""
         if self.augment:
             hyp.mosaic = hyp.mosaic if self.augment and not self.rect else 0.0
             hyp.mixup = hyp.mixup if self.augment and not self.rect else 0.0
@@ -162,14 +182,13 @@ class YOLODataset(BaseDataset):
         return transforms
 
     def close_mosaic(self, hyp):
-        """Sets mosaic, copy_paste and mixup options to 0.0 and builds transformations."""
         hyp.mosaic = 0.0  # set mosaic ratio=0.0
         hyp.copy_paste = 0.0  # keep the same behavior as previous v8 close-mosaic
         hyp.mixup = 0.0  # keep the same behavior as previous v8 close-mosaic
         self.transforms = self.build_transforms(hyp)
 
     def update_labels_info(self, label):
-        """custom your label format here."""
+        """custom your label format here"""
         # NOTE: cls is not with bboxes now, classification and semantic segmentation need an independent cls label
         # we can make it also support classification and semantic segmentation by add or remove some dict keys there.
         bboxes = label.pop('bboxes')
@@ -182,7 +201,6 @@ class YOLODataset(BaseDataset):
 
     @staticmethod
     def collate_fn(batch):
-        """Collates data samples into batches."""
         new_batch = {}
         keys = batch[0].keys()
         values = list(zip(*[list(b.values()) for b in batch]))
@@ -203,58 +221,31 @@ class YOLODataset(BaseDataset):
 # Classification dataloaders -------------------------------------------------------------------------------------------
 class ClassificationDataset(torchvision.datasets.ImageFolder):
     """
-    YOLO Classification Dataset.
-
-    Args:
-        root (str): Dataset path.
-
-    Attributes:
-        cache_ram (bool): True if images should be cached in RAM, False otherwise.
-        cache_disk (bool): True if images should be cached on disk, False otherwise.
-        samples (list): List of samples containing file, index, npy, and im.
-        torch_transforms (callable): torchvision transforms applied to the dataset.
-        album_transforms (callable, optional): Albumentations transforms applied to the dataset if augment is True.
+    YOLOv5 Classification Dataset.
+    Arguments
+        root:  Dataset path
+        transform:  torchvision transforms, used by default
+        album_transform: Albumentations transforms, used if installed
     """
 
-    def __init__(self, root, args, augment=False, cache=False):
-        """
-        Initialize YOLO object with root, image size, augmentations, and cache settings.
-
-        Args:
-            root (str): Dataset path.
-            args (Namespace): Argument parser containing dataset related settings.
-            augment (bool, optional): True if dataset should be augmented, False otherwise. Defaults to False.
-            cache (Union[bool, str], optional): Cache setting, can be True, False, 'ram' or 'disk'. Defaults to False.
-        """
+    def __init__(self, root, augment, imgsz, cache=False):
         super().__init__(root=root)
+        self.torch_transforms = classify_transforms(imgsz)
+        self.album_transforms = classify_albumentations(augment, imgsz) if augment else None
         self.cache_ram = cache is True or cache == 'ram'
         self.cache_disk = cache == 'disk'
         self.samples = [list(x) + [Path(x[0]).with_suffix('.npy'), None] for x in self.samples]  # file, index, npy, im
-        self.torch_transforms = classify_transforms(args.imgsz)
-        self.album_transforms = classify_albumentations(
-            augment=augment,
-            size=args.imgsz,
-            scale=(1.0 - args.scale, 1.0),  # (0.08, 1.0)
-            hflip=args.fliplr,
-            vflip=args.flipud,
-            hsv_h=args.hsv_h,  # HSV-Hue augmentation (fraction)
-            hsv_s=args.hsv_s,  # HSV-Saturation augmentation (fraction)
-            hsv_v=args.hsv_v,  # HSV-Value augmentation (fraction)
-            mean=(0.0, 0.0, 0.0),  # IMAGENET_MEAN
-            std=(1.0, 1.0, 1.0),  # IMAGENET_STD
-            auto_aug=False) if augment else None
 
     def __getitem__(self, i):
-        """Returns subset of data and targets corresponding to given indices."""
         f, j, fn, im = self.samples[i]  # filename, index, filename.with_suffix('.npy'), image
         if self.cache_ram and im is None:
-            im = self.samples[i][3] = cv2.imread(f, cv2.IMREAD_UNCHANGE)
+            im = self.samples[i][3] = cv2.imread(f)
         elif self.cache_disk:
             if not fn.exists():  # load npy
-                np.save(fn.as_posix(), cv2.imread(f, cv2.IMREAD_UNCHANGE))
+                np.save(fn.as_posix(), cv2.imread(f))
             im = np.load(fn)
         else:  # read image
-            im = cv2.imread(f, cv2.IMREAD_UNCHANGE)  # BGR
+            im = cv2.imread(f)  # BGR
         if self.album_transforms:
             sample = self.album_transforms(image=cv2.cvtColor(im, cv2.COLOR_BGR2RGB))['image']
         else:
@@ -269,5 +260,4 @@ class ClassificationDataset(torchvision.datasets.ImageFolder):
 class SemanticDataset(BaseDataset):
 
     def __init__(self):
-        """Initialize a SemanticDataset object."""
         pass
